@@ -36,6 +36,58 @@ export const listUsers = async (_req: Request, res: Response) => {
   return res.json(users.map(toSafeUser));
 };
 
+export const getUserById = async (req: Request, res: Response) => {
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    return res.status(404).json({ message: 'User not found.' });
+  }
+
+  return res.json(toSafeUser(user));
+};
+
+export const updateUser = async (req: Request, res: Response) => {
+  const { name, email } = req.body as { name?: string; email?: string };
+  const updatePayload: { name?: string; email?: string } = {};
+
+  if (name !== undefined) {
+    if (!name.trim()) {
+      return res.status(400).json({ message: 'name must be a non-empty string when provided.' });
+    }
+    updatePayload.name = name.trim();
+  }
+
+  if (email !== undefined) {
+    if (!email.trim()) {
+      return res.status(400).json({ message: 'email must be a non-empty string when provided.' });
+    }
+    updatePayload.email = email.trim().toLowerCase();
+  }
+
+  if (Object.keys(updatePayload).length === 0) {
+    return res.status(400).json({ message: 'At least one of name or email must be provided.' });
+  }
+
+  try {
+    const user = await User.findByIdAndUpdate(req.params.id, updatePayload, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    return res.json(toSafeUser(user));
+  } catch (error) {
+    const details = error instanceof Error ? error.message : 'Unknown error';
+    if (details.includes('duplicate key error')) {
+      return res.status(409).json({ message: 'A user with that email already exists.' });
+    }
+
+    throw error;
+  }
+};
+
 export const updateUserStatus = async (req: Request, res: Response) => {
   const { status } = req.body as { status?: UserStatus };
   if (!status || !['active', 'inactive'].includes(status)) {
@@ -72,6 +124,15 @@ export const updateUserRoles = async (req: Request, res: Response) => {
   }
 
   return res.json(toSafeUser(user));
+};
+
+export const deleteUser = async (req: Request, res: Response) => {
+  const user = await User.findByIdAndDelete(req.params.id);
+  if (!user) {
+    return res.status(404).json({ message: 'User not found.' });
+  }
+
+  return res.status(204).send();
 };
 
 export const getProfile = async (req: Request, res: Response) => {
