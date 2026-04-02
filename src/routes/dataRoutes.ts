@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createRecord, getAdminInsights, getAnalystRecords, getDashboardData, updateRecord } from '../controllers/dataController';
+import { createRecord, deleteRecord, getAdminInsights, getAnalystRecords, getDashboardData, getRecordById, updateRecord } from '../controllers/dataController';
 import { authenticate } from '../middleware/authenticate';
 import { requireRoles } from '../middleware/authorize';
 import { ROLES } from '../types/roles';
@@ -8,8 +8,10 @@ const router = Router();
 
 router.get('/dashboard', authenticate, requireRoles(ROLES.VIEWER), getDashboardData);
 router.get('/records', authenticate, requireRoles(ROLES.ANALYST), getAnalystRecords);
+router.get('/records/:id', authenticate, requireRoles(ROLES.ANALYST), getRecordById);
 router.post('/records', authenticate, requireRoles(ROLES.ADMIN), createRecord);
 router.patch('/records/:id', authenticate, requireRoles(ROLES.ADMIN), updateRecord);
+router.delete('/records/:id', authenticate, requireRoles(ROLES.ADMIN), deleteRecord);
 router.get('/insights', authenticate, requireRoles(ROLES.ADMIN), getAdminInsights);
 
 export default router;
