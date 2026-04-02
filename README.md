@@ -34,16 +34,21 @@ A Node.js (Express + TypeScript) backend focused on user and role management for
 | `/api/users/me` | GET | Any authenticated | View own profile |
 | `/api/users` | POST | Admin | Create a user and assign roles |
 | `/api/users` | GET | Admin | List all users |
+| `/api/users/:id` | GET | Admin | View one user |
+| `/api/users/:id` | PATCH | Admin | Update user profile fields (name/email) |
 | `/api/users/:id/status` | PATCH | Admin | Activate/deactivate user |
 | `/api/users/:id/roles` | PATCH | Admin | Update role assignments |
+| `/api/users/:id` | DELETE | Admin | Remove a user |
 | `/api/data/dashboard` | GET | Viewer+ | Read dashboard summary |
 | `/api/data/records` | GET | Analyst+ | Access analytical records |
+| `/api/data/records` | POST | Admin | Create financial records |
+| `/api/data/records/:id` | PATCH | Admin | Update financial records |
 | `/api/data/insights` | GET | Admin | Administrative insights |
 
 ## Role Model
 
 - **Viewer** – read-only dashboard access.
-- **Analyst** – dashboard + insights/records.
-- **Admin** – manage records and users (inherits all other permissions).
+- **Analyst** – dashboard + records.
+- **Admin** – manage users, create/update records, and access all data (inherits all other permissions).
 
 Inactive users are prevented from authenticating and all protected routes enforce both authentication and role checks.
