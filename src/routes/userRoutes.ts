@@ -1,14 +1,13 @@
 import { Router } from 'express';
 import { createUser, deleteUser, getProfile, getUserById, listUsers, updateUser, updateUserRoles, updateUserStatus } from '../controllers/userController';
 import { authenticate } from '../middleware/authenticate';
-import { requireRoles } from '../middleware/authorize';
-import { ROLES } from '../types/roles';
+import { PERMISSIONS, requirePermission } from '../middleware/authorize';
 
 const router = Router();
 
 router.get('/me', authenticate, getProfile);
 
-router.use(authenticate, requireRoles(ROLES.ADMIN));
+router.use(authenticate, requirePermission(PERMISSIONS.MANAGE_USERS));
 router.post('/', createUser);
 router.get('/', listUsers);
 router.get('/:id', getUserById);

@@ -1,17 +1,16 @@
 import { Router } from 'express';
 import { createRecord, deleteRecord, getAdminInsights, getAnalystRecords, getDashboardData, getRecordById, updateRecord } from '../controllers/dataController';
 import { authenticate } from '../middleware/authenticate';
-import { requireRoles } from '../middleware/authorize';
-import { ROLES } from '../types/roles';
+import { PERMISSIONS, requirePermission } from '../middleware/authorize';
 
 const router = Router();
 
-router.get('/dashboard', authenticate, requireRoles(ROLES.VIEWER), getDashboardData);
-router.get('/records', authenticate, requireRoles(ROLES.ANALYST), getAnalystRecords);
-router.get('/records/:id', authenticate, requireRoles(ROLES.ANALYST), getRecordById);
-router.post('/records', authenticate, requireRoles(ROLES.ADMIN), createRecord);
-router.patch('/records/:id', authenticate, requireRoles(ROLES.ADMIN), updateRecord);
-router.delete('/records/:id', authenticate, requireRoles(ROLES.ADMIN), deleteRecord);
-router.get('/insights', authenticate, requireRoles(ROLES.ADMIN), getAdminInsights);
+router.get('/dashboard', authenticate, requirePermission(PERMISSIONS.VIEW_DASHBOARD), getDashboardData);
+router.get('/records', authenticate, requirePermission(PERMISSIONS.VIEW_RECORDS), getAnalystRecords);
+router.get('/records/:id', authenticate, requirePermission(PERMISSIONS.VIEW_RECORDS), getRecordById);
+router.post('/records', authenticate, requirePermission(PERMISSIONS.MANAGE_RECORDS), createRecord);
+router.patch('/records/:id', authenticate, requirePermission(PERMISSIONS.MANAGE_RECORDS), updateRecord);
+router.delete('/records/:id', authenticate, requirePermission(PERMISSIONS.MANAGE_RECORDS), deleteRecord);
+router.get('/insights', authenticate, requirePermission(PERMISSIONS.VIEW_INSIGHTS), getAdminInsights);
 
 export default router;
