@@ -9,6 +9,39 @@ interface RecordFiltersResult {
   applied: Record<string, string | number>;
 }
 
+interface SummaryFacet {
+  _id: RecordType;
+  total: number;
+}
+
+interface CategoryFacet {
+  _id: string;
+  total: number;
+  income: number;
+  expense: number;
+}
+
+interface MonthlyTrendFacet {
+  _id: { year: number; month: number };
+  income: number;
+  expense: number;
+}
+
+interface DashboardAggregates {
+  summary: SummaryFacet[];
+  categoryTotals: CategoryFacet[];
+  monthlyTrend: MonthlyTrendFacet[];
+}
+
+interface MonthlyTrendPoint {
+  label: string;
+  income: number;
+  expense: number;
+  net: number;
+}
+
+const TREND_WINDOW_MONTHS = 6;
+
 const isRecordType = (value: unknown): value is RecordType => value === 'income' || value === 'expense';
 
 const toNumber = (value: unknown): number | undefined => {
@@ -94,25 +127,121 @@ const buildRecordFilters = (query: Request['query']): RecordFiltersResult => {
   return { filter, applied };
 };
 
+const formatYearMonth = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}`;
+
+const buildMonthlyTrend = (raw: MonthlyTrendFacet[], now: Date): MonthlyTrendPoint[] => {
+  const buckets = new Map<string, { income: number; expense: number }>();
+  raw.forEach((bucket) => {
+    const key = formatYearMonth(bucket._id.year, bucket._id.month);
+    buckets.set(key, { income: bucket.income, expense: bucket.expense });
+  });
+
+  const points: MonthlyTrendPoint[] = [];
+  for (let offset = TREND_WINDOW_MONTHS - 1; offset >= 0; offset -= 1) {
+    const bucketDate = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const key = formatYearMonth(bucketDate.getFullYear(), bucketDate.getMonth() + 1);
+    const data = buckets.get(key) ?? { income: 0, expense: 0 };
+    points.push({
+      label: key,
+      income: data.income,
+      expense: data.expense,
+      net: data.income - data.expense,
+    });
+  }
+  return points;
+};
+
 export const getDashboardData = async (_req: Request, res: Response) => {
-  const summary = await FinancialRecord.aggregate<{
-    _id: RecordType;
-    total: number;
-  }>([
-    { $group: { _id: '$type', total: { $sum: '$amount' } } },
+  const now = new Date();
+  const trendStart = new Date(now.getFullYear(), now.getMonth() - (TREND_WINDOW_MONTHS - 1), 1);
+
+  const [aggregateResult] = await FinancialRecord.aggregate<DashboardAggregates>([
+    {
+      $facet: {
+        summary: [{ $group: { _id: '$type', total: { $sum: '$amount' } } }],
+        categoryTotals: [
+          {
+            $group: {
+              _id: '$category',
+              total: { $sum: '$amount' },
+              income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
+              expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
+            },
+          },
+          { $sort: { total: -1 } },
+        ],
+        monthlyTrend: [
+          { $match: { date: { $gte: trendStart } } },
+          {
+            $group: {
+              _id: { year: { $year: '$date' }, month: { $month: '$date' } },
+              income: { $sum: { $cond: [{ $eq: ['$type', 'income'] }, '$amount', 0] } },
+              expense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
+            },
+          },
+          { $sort: { '_id.year': 1, '_id.month': 1 } },
+        ],
+      },
+    },
   ]);
 
-  const getTotal = (type: RecordType) => summary.find((item) => item._id === type)?.total ?? 0;
-  const totalIncome = getTotal('income');
-  const totalExpense = getTotal('expense');
+  const recentActivity: Array<{
+    _id: FinancialRecordDocument['_id'];
+    amount: number;
+    type: RecordType;
+    category: string;
+    date: Date;
+    notes?: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }> = await FinancialRecord.find()
+    .sort({ date: -1, createdAt: -1 })
+    .limit(5)
+    .lean();
+
+  const summaryBuckets = aggregateResult?.summary ?? [];
+  const totalIncome = summaryBuckets.find((bucket) => bucket._id === 'income')?.total ?? 0;
+  const totalExpense = summaryBuckets.find((bucket) => bucket._id === 'expense')?.total ?? 0;
+
+  const categoryTotals = (aggregateResult?.categoryTotals ?? []).map((bucket) => ({
+    category: bucket._id,
+    income: bucket.income,
+    expense: bucket.expense,
+    total: bucket.total,
+  }));
+  const categoryGrandTotal = categoryTotals.reduce((sum, bucket) => sum + bucket.total, 0);
+  const categoryBreakdown = categoryTotals.map((bucket) => ({
+    ...bucket,
+    share: categoryGrandTotal === 0 ? 0 : bucket.total / categoryGrandTotal,
+  }));
+
+  const monthlyTrend = buildMonthlyTrend(aggregateResult?.monthlyTrend ?? [], now);
+
+  const activityFeed = recentActivity.map((record) => ({
+    id: record._id.toString(),
+    amount: record.amount,
+    type: record.type,
+    category: record.category,
+    date: record.date,
+    notes: record.notes,
+  }));
 
   return res.json({
     summary: {
       totalIncome,
       totalExpense,
       net: totalIncome - totalExpense,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now.toISOString(),
     },
+    categories: {
+      totals: categoryBreakdown,
+      grandTotal: categoryGrandTotal,
+    },
+    monthlyTrend: {
+      rangeStart: trendStart.toISOString(),
+      months: monthlyTrend,
+    },
+    recentActivity: activityFeed,
   });
 };
 
